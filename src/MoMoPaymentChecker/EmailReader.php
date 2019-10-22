@@ -21,6 +21,10 @@ class EmailReader
         $this->gmail = new \Google_Service_Gmail($client);
     }
 
+    /**
+     * @param string $messageId
+     * @return \Google_Service_Gmail_Message
+     */
     public function getMessage($messageId)
     {
         return $this->gmail->users_messages->get('me', $messageId, [
@@ -28,6 +32,10 @@ class EmailReader
         ]);
     }
 
+    /**
+     * @param array $params
+     * @return \Google_Service_Gmail_ListMessagesResponse
+     */
     public function listMessages(array $params = [])
     {
         return $this->gmail->users_messages->listUsersMessages('me', $params);
