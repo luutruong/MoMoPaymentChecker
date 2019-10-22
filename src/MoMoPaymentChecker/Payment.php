@@ -9,6 +9,7 @@ class Payment
 {
     const MOMO_EMAIL_SENDER = 'no-reply@momo.vn';
 
+    const FILE_GROUP_DIR = 'momo_payment_checker';
     const CACHE_FILE_EXT = '.msg';
 
     /**
@@ -43,19 +44,19 @@ class Payment
         return $this;
     }
 
-    public function getTransaction($transactionId, array $messageParams = [])
+    public function getTransaction($phoneNumber, $content)
     {
-        $messages = $this->reader->listMessages(array_replace([
-            'maxResults' => 50
-        ], $messageParams));
+        $data = $this->indexRecentMessages();
 
-        /** @var \Google_Service_Gmail_Message $message */
-        foreach ($messages as $message) {
-            $transaction = $this->parseMessage($message);
-            if ($transaction !== null
-                && $transaction['id'] === $transactionId
+        foreach ($data as $item) {
+            if (empty($item)) {
+                continue;
+            }
+
+            if ($item['phone_number'] === $phoneNumber
+                && $item['content'] === $content
             ) {
-                return $transaction;
+                return $item;
             }
         }
 
@@ -68,42 +69,11 @@ class Payment
      */
     public function parseMessage(\Google_Service_Gmail_Message $message)
     {
-        $messageId = $message->getId();
-        if ($this->storageDir !== null) {
-            $hashed = substr(md5($messageId), 0, 8);
-            $dir = rtrim($this->storageDir, '/');
-            $index = 0;
-
-            while ($index < 8) {
-                $dir .= '/' . substr($hashed, $index, 2);
-                $index += 2;
-            }
-
-            $path = $dir . '/' . $messageId . self::CACHE_FILE_EXT;
-            $fs = $this->fs;
-            if (!$fs->exists($path)) {
-                if (!$fs->isDirectory($dir)) {
-                    $fs->makeDirectory($dir, 0755, true);
-                }
-
-                $messageService = $this->reader->getMessage($messageId);
-                $obj = $messageService->toSimpleObject();
-
-                $fs->put($path, json_encode($obj));
-            } else {
-                $contents = $fs->get($path);
-                $obj = json_decode($contents);
-            }
-        } else {
-            $messageService = $this->reader->getMessage($messageId);
-            $obj = $messageService->toSimpleObject();
-        }
-
         $mailFromMoMo = false;
         /** @var \Google_Service_Gmail_MessagePartHeader $header */
-        foreach ($obj->payload->headers as $header) {
-            if ($header->name === 'Sender'
-                && strtolower($header->value) === self::MOMO_EMAIL_SENDER
+        foreach ($message->getPayload()->getHeaders() as $header) {
+            if ($header->getName() === 'Sender'
+                && strtolower($header->getValue()) === self::MOMO_EMAIL_SENDER
             ) {
                 $mailFromMoMo = true;
 
@@ -115,9 +85,9 @@ class Payment
             return null;
         }
 
-        $parts = $obj->payload->parts;
+        $parts = $message->getPayload()->getParts();
 
-        $body = $parts[0]->body;
+        $body = $parts[0]['body'];
         $rawData = $body->data;
         $sanitizedData = strtr($rawData, '-_', '+/');
 
@@ -179,6 +149,12 @@ class Payment
                 $transaction['phone_number'] = array_shift($lineMessages);
             }
 
+            if (preg_match('/^lời chúc$/i', $line)
+                && count($lineMessages) > 0
+            ) {
+                $transaction['content'] = array_shift($lineMessages);
+            }
+
             if (count($lineMessages) <= 0) {
                 break;
             }
@@ -195,6 +171,90 @@ class Payment
         $transaction['_raw'] = $raw;
 
         return $transaction;
+    }
+
+    /**
+     * Index recent 100 mail messages
+     * @return array
+     */
+    protected function indexRecentMessages()
+    {
+        if ($this->storageDir === null) {
+            throw new \InvalidArgumentException('Storage directory must be set!');
+        }
+
+        $messages = $this->reader->listMessages([
+            'maxResults' => 100
+        ]);
+
+        $data = [];
+
+        /** @var \Google_Service_Gmail_Message $message */
+        foreach ($messages as $message) {
+            $data[$message->getId()] = $this->indexMessage($message->getId());
+        }
+
+        $files = $this->fs->glob($this->storageDir . '/' . self::FILE_GROUP_DIR . '/*/*/*' . self::CACHE_FILE_EXT);
+        foreach ($files as $path) {
+            $messageId = pathinfo($path, PATHINFO_FILENAME);
+            if (array_key_exists($messageId, $data)) {
+                continue;
+            }
+
+            $contents = file_get_contents($path);
+            list(, $encoded) = explode(',', $contents, 2);
+            $data[$messageId] = json_decode($encoded, true);
+        }
+
+        return $data;
+    }
+
+    /**
+     * @param string $messageId
+     * @return array|null
+     */
+    protected function indexMessage($messageId)
+    {
+        $path = $this->getMessageFilePath($messageId);
+        $fs = $this->fs;
+
+        if ($fs->exists($path)) {
+            $contents = $fs->get($path);
+            list(, $encoded) = explode(',', $contents, 2);
+
+            return json_decode($encoded, true);
+        }
+
+        $directory = dirname($path);
+        if (!$fs->isDirectory($directory)) {
+            $fs->makeDirectory($directory, 0755, true);
+        }
+
+        $message = $this->reader->getMessage($messageId);
+        $transaction = $this->parseMessage($message);
+
+        $contents = time() . ',' . strval(json_encode($transaction));
+        $fs->put($path, $contents);
+
+        return $transaction;
+    }
+
+    /**
+     * @param string $messageId
+     * @return string
+     */
+    protected function getMessageFilePath($messageId)
+    {
+        $hashed = md5($messageId);
+        $index = 0;
+        $path = rtrim($this->storageDir, '/') . '/' . self::FILE_GROUP_DIR;
+
+        while ($index < 2) {
+            $path .= '/' . substr($hashed, $index * 2, 2);
+            $index++;
+        }
+
+        return $path . '/' . $messageId . self::CACHE_FILE_EXT;
     }
 
     /**
