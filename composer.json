@@ -1,0 +1,16 @@
+{
+  "autoload": {
+    "psr-4": {
+      "MoMoPaymentChecker\\": "src/MoMoPaymentChecker"
+    }
+  },
+  "require": {
+    "google/apiclient": "^2.4",
+    "symfony/css-selector": "^4.3",
+    "symfony/dom-crawler": "^4.3",
+    "illuminate/filesystem": "^5.8"
+  },
+  "require-dev": {
+    "symfony/var-dumper": "^4.3"
+  }
+}
