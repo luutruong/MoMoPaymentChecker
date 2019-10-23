@@ -3,7 +3,6 @@
 namespace MoMoPaymentChecker;
 
 use Symfony\Component\DomCrawler\Crawler;
-use Illuminate\Filesystem\Filesystem;
 
 class Payment
 {
@@ -22,15 +21,9 @@ class Payment
      */
     protected $storageDir;
 
-    /**
-     * @var Filesystem
-     */
-    protected $fs;
-
     public function __construct(EmailReader $reader)
     {
         $this->reader = $reader;
-        $this->fs = new Filesystem();
     }
 
     /**
@@ -194,7 +187,7 @@ class Payment
             $data[$message->getId()] = $this->indexMessage($message->getId());
         }
 
-        $files = $this->fs->glob($this->storageDir . '/' . self::FILE_GROUP_DIR . '/*/*/*' . self::CACHE_FILE_EXT);
+        $files = glob($this->storageDir . '/' . self::FILE_GROUP_DIR . '/*/*/*' . self::CACHE_FILE_EXT);
         foreach ($files as $path) {
             $messageId = pathinfo($path, PATHINFO_FILENAME);
             if (array_key_exists($messageId, $data)) {
@@ -216,25 +209,24 @@ class Payment
     protected function indexMessage($messageId)
     {
         $path = $this->getMessageFilePath($messageId);
-        $fs = $this->fs;
 
-        if ($fs->exists($path)) {
-            $contents = $fs->get($path);
+        if (file_exists($path)) {
+            $contents = file_get_contents($path);
             list(, $encoded) = explode(',', $contents, 2);
 
             return json_decode($encoded, true);
         }
 
         $directory = dirname($path);
-        if (!$fs->isDirectory($directory)) {
-            $fs->makeDirectory($directory, 0755, true);
+        if (!is_dir($directory)) {
+            mkdir($directory, 0755, true);
         }
 
         $message = $this->reader->getMessage($messageId);
         $transaction = $this->parseMessage($message);
 
         $contents = time() . ',' . strval(json_encode($transaction));
-        $fs->put($path, $contents);
+        file_put_contents($path, $contents);
 
         return $transaction;
     }
