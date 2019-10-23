@@ -37,7 +37,7 @@ class Payment
         return $this;
     }
 
-    public function getTransaction($phoneNumber, $content)
+    public function getTransaction(\Closure $filter)
     {
         $data = $this->indexRecentMessages();
 
@@ -46,9 +46,8 @@ class Payment
                 continue;
             }
 
-            if ($item['phone_number'] === $phoneNumber
-                && $item['content'] === $content
-            ) {
+            $returned = call_user_func($filter, $item);
+            if ($returned === true) {
                 return $item;
             }
         }
