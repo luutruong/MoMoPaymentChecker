@@ -1,4 +1,12 @@
 {
+  "name": "luutruong/momopaymentchecker",
+  "keywords": ["momo", "payment"],
+  "authors": [
+    {
+      "name": "Luu Truong",
+      "email": "truonglv@outlook.com"
+    }
+  ],
   "autoload": {
     "psr-4": {
       "MoMoPaymentChecker\\": "src/MoMoPaymentChecker"
