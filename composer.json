@@ -1,6 +1,7 @@
 {
   "name": "luutruong/momopaymentchecker",
   "keywords": ["momo", "payment"],
+  "license": "MIT",
   "authors": [
     {
       "name": "Luu Truong",
