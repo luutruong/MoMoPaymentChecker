@@ -55,13 +55,13 @@ class Payment
         $data = $this->indexRecentMessages();
 
         foreach ($data as $item) {
-            if (empty($item) || empty($item['data'])) {
+            if (empty($item)) {
                 continue;
             }
 
-            $returned = \call_user_func($filter, $item['data']);
+            $returned = \call_user_func($filter, $item);
             if ($returned === true) {
-                return $item['data'];
+                return $item;
             }
         }
 
