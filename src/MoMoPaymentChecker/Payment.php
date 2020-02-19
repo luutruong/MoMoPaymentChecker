@@ -96,79 +96,8 @@ class Payment
             return null;
         }
 
-        $crawler = new Crawler();
-        $crawler->addHtmlContent($decoded);
-
-        $text = \trim($crawler->text());
-
-        $lineMessages = \explode("\r\n", $text);
-        $lineMessages = \array_map('trim', $lineMessages);
-        $lineMessages = \array_diff($lineMessages, ['"', '']);
-        $lineMessages = \array_values($lineMessages);
-
-        $raw = \implode("\r\n", $lineMessages);
-
-        $transaction = [];
-
-        while (true) {
-            $line = \array_shift($lineMessages);
-            if (\preg_match('/^số tiền nhận được$/i', $line)
-                && \count($lineMessages) > 0
-            ) {
-                $amount = \array_shift($lineMessages);
-                $amount = \str_replace('.', '', $amount);
-
-                $transaction['amount'] = $amount;
-            }
-
-            if (\preg_match('/^mã giao dịch$/i', $line)
-                && \count($lineMessages) > 0
-            ) {
-                $transaction['id'] = \array_shift($lineMessages);
-            }
-
-            if (\preg_match('/^thời gian$/i', $line)
-                && \count($lineMessages) > 0
-            ) {
-                $date = \array_shift($lineMessages);
-                $date = \str_replace('-', '', $date);
-                $date = \str_replace('  ', ' ', $date);
-
-                $transaction['date'] = $date;
-            }
-
-            if (\preg_match('/^người gửi$/i', $line)
-                && \count($lineMessages) > 0
-            ) {
-                $transaction['name'] = \array_shift($lineMessages);
-            }
-
-            if (\preg_match('/^số điện thoại người gửi$/i', $line)
-                && \count($lineMessages) > 0
-            ) {
-                $transaction['phone_number'] = \array_shift($lineMessages);
-            }
-
-            if (\preg_match('/^lời chúc$/i', $line)
-                && \count($lineMessages) > 0
-            ) {
-                $transaction['content'] = \array_shift($lineMessages);
-            }
-
-            if (\count($lineMessages) <= 0) {
-                break;
-            }
-        }
-
-        if (\count($transaction) === 0) {
-            return null;
-        }
-
-        if (!$this->validateTransactionData($transaction)) {
-            return null;
-        }
-
-        $transaction['_raw'] = $raw;
+        $parser = new Parser($decoded);
+        $transaction = $parser->parse();
         $transaction['_messageBody'] = $decoded;
 
         return $transaction;
@@ -215,41 +144,8 @@ class Payment
         $message = $this->reader->getMessage($messageId);
         $transaction = $this->parseMessage($message);
 
-        $cache->save($messageId, [
-            'data' => $transaction,
-            'time' => \time()
-        ]);
+        $cache->save($messageId, $transaction);
 
         return $transaction;
-    }
-
-    /**
-     * @param array $transaction
-     * @return bool
-     */
-    protected function validateTransactionData(array &$transaction)
-    {
-        $requiredKeys = ['amount', 'id', 'date', 'phone_number'];
-        foreach ($requiredKeys as $requiredKey) {
-            if (!isset($transaction[$requiredKey])
-                || $transaction[$requiredKey] === ''
-            ) {
-                return false;
-            }
-        }
-
-        foreach (\array_keys($transaction) as $key) {
-            if ($key === 'amount') {
-                $transaction[$key] = \intval($transaction[$key]);
-            } elseif ($key === 'date') {
-                $transaction[$key] = \DateTime::createFromFormat(
-                    'd/m/Y H:i',
-                    $transaction[$key],
-                    new \DateTimeZone('Asia/Ho_Chi_Minh')
-                );
-            }
-        }
-
-        return true;
     }
 }
