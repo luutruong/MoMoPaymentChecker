@@ -2,14 +2,18 @@
 
 namespace MoMoPaymentChecker;
 
+use MoMoPaymentChecker\Cache\AbstractFactory;
+use MoMoPaymentChecker\Cache\File;
 use Symfony\Component\DomCrawler\Crawler;
 
 class Payment
 {
     const MOMO_EMAIL_SENDER = 'no-reply@momo.vn';
 
-    const FILE_GROUP_DIR = 'momo_payment_checker';
-    const CACHE_FILE_EXT = '.msg';
+    /**
+     * @var callable|null
+     */
+    public static $messageParser;
 
     /**
      * @var EmailReader
@@ -17,13 +21,14 @@ class Payment
     protected $reader;
 
     /**
-     * @var string|null
+     * @var AbstractFactory|null
      */
-    protected $storageDir;
+    protected $cache;
 
-    public function __construct(EmailReader $reader)
+    public function __construct(EmailReader $reader, AbstractFactory $cache = null)
     {
         $this->reader = $reader;
+        $this->cache = $cache ?: new File();
     }
 
     /**
@@ -32,23 +37,31 @@ class Payment
      */
     public function setStorageDir($storageDir)
     {
-        $this->storageDir = $storageDir;
+        if ($this->cache instanceof File) {
+            $this->cache->setStorageDir($storageDir);
+        } else {
+            throw new \LogicException('Set storage directory does not supported!');
+        }
 
         return $this;
     }
 
+    /**
+     * @param \Closure $filter
+     * @return array|null
+     */
     public function getTransaction(\Closure $filter)
     {
         $data = $this->indexRecentMessages();
 
         foreach ($data as $item) {
-            if (empty($item)) {
+            if (empty($item) || empty($item['data'])) {
                 continue;
             }
 
-            $returned = call_user_func($filter, $item);
+            $returned = \call_user_func($filter, $item['data']);
             if ($returned === true) {
-                return $item;
+                return $item['data'];
             }
         }
 
@@ -61,20 +74,15 @@ class Payment
      */
     public function parseMessage(\Google_Service_Gmail_Message $message)
     {
-        $mailFromMoMo = false;
-        /** @var \Google_Service_Gmail_MessagePartHeader $header */
-        foreach ($message->getPayload()->getHeaders() as $header) {
-            if ($header->getName() === 'Sender'
-                && strtolower($header->getValue()) === self::MOMO_EMAIL_SENDER
-            ) {
-                $mailFromMoMo = true;
-
-                break;
+        if (static::$messageParser !== null
+            && \is_callable(static::$messageParser)
+        ) {
+            $return = \call_user_func(static::$messageParser, $message);
+            if ($return === null || \is_array($return)) {
+                return $return;
             }
-        }
 
-        if (!$mailFromMoMo) {
-            return null;
+            throw new \LogicException('Method must be return a Array or NULL!');
         }
 
         $parts = $message->getPayload()->getParts();
@@ -83,76 +91,76 @@ class Payment
         $rawData = $body->data;
         $sanitizedData = strtr($rawData, '-_', '+/');
 
-        $decoded = trim(base64_decode($sanitizedData));
-        if (strpos($decoded, '<!DOCTYPE html>') !== 0) {
+        $decoded = \trim(\base64_decode($sanitizedData));
+        if (\stripos($decoded, '<!DOCTYPE html>') !== 0) {
             return null;
         }
 
         $crawler = new Crawler();
         $crawler->addHtmlContent($decoded);
 
-        $text = trim($crawler->text());
+        $text = \trim($crawler->text());
 
-        $lineMessages = explode("\r\n", $text);
-        $lineMessages = array_map('trim', $lineMessages);
-        $lineMessages = array_diff($lineMessages, ['"', '']);
-        $lineMessages = array_values($lineMessages);
+        $lineMessages = \explode("\r\n", $text);
+        $lineMessages = \array_map('trim', $lineMessages);
+        $lineMessages = \array_diff($lineMessages, ['"', '']);
+        $lineMessages = \array_values($lineMessages);
 
-        $raw = implode("\r\n", $lineMessages);
+        $raw = \implode("\r\n", $lineMessages);
 
         $transaction = [];
 
         while (true) {
-            $line = array_shift($lineMessages);
-            if (preg_match('/^số tiền nhận được$/i', $line)
-                && count($lineMessages) > 0
+            $line = \array_shift($lineMessages);
+            if (\preg_match('/^số tiền nhận được$/i', $line)
+                && \count($lineMessages) > 0
             ) {
-                $amount = array_shift($lineMessages);
-                $amount = str_replace('.', '', $amount);
+                $amount = \array_shift($lineMessages);
+                $amount = \str_replace('.', '', $amount);
 
                 $transaction['amount'] = $amount;
             }
 
-            if (preg_match('/^mã giao dịch$/i', $line)
-                && count($lineMessages) > 0
+            if (\preg_match('/^mã giao dịch$/i', $line)
+                && \count($lineMessages) > 0
             ) {
-                $transaction['id'] = array_shift($lineMessages);
+                $transaction['id'] = \array_shift($lineMessages);
             }
 
-            if (preg_match('/^thời gian$/i', $line)
-                && count($lineMessages) > 0
+            if (\preg_match('/^thời gian$/i', $line)
+                && \count($lineMessages) > 0
             ) {
-                $date = array_shift($lineMessages);
-                $date = str_replace('-', '', $date);
-                $date = str_replace('  ', ' ', $date);
+                $date = \array_shift($lineMessages);
+                $date = \str_replace('-', '', $date);
+                $date = \str_replace('  ', ' ', $date);
 
                 $transaction['date'] = $date;
             }
 
-            if (preg_match('/^người gửi$/i', $line)
-                && count($lineMessages) > 0
+            if (\preg_match('/^người gửi$/i', $line)
+                && \count($lineMessages) > 0
             ) {
-                $transaction['name'] = array_shift($lineMessages);
+                $transaction['name'] = \array_shift($lineMessages);
             }
 
-            if (preg_match('/^số điện thoại người gửi$/i', $line)
-                && count($lineMessages) > 0
+            if (\preg_match('/^số điện thoại người gửi$/i', $line)
+                && \count($lineMessages) > 0
             ) {
-                $transaction['phone_number'] = array_shift($lineMessages);
+                $transaction['phone_number'] = \array_shift($lineMessages);
             }
 
-            if (preg_match('/^lời chúc$/i', $line)
-                && count($lineMessages) > 0
+            if (\preg_match('/^lời chúc$/i', $line)
+                && \count($lineMessages) > 0
             ) {
-                $transaction['content'] = array_shift($lineMessages);
+                $transaction['content'] = \array_shift($lineMessages);
             }
 
-            if (count($lineMessages) <= 0) {
+            if (\count($lineMessages) <= 0) {
                 break;
             }
         }
 
-        if (count($transaction) === 0) {
+        if (\count($transaction) === 0) {
             return null;
         }
 
@@ -161,42 +169,32 @@ class Payment
         }
 
         $transaction['_raw'] = $raw;
+        $transaction['_messageBody'] = $decoded;
 
         return $transaction;
     }
 
     /**
-     * Index recent 100 mail messages
      * @return array
      */
     protected function indexRecentMessages()
     {
-        if ($this->storageDir === null) {
-            throw new \InvalidArgumentException('Storage directory must be set!');
-        }
-
         $messages = $this->reader->listMessages([
             'maxResults' => 100,
             'q' => 'from:' . self::MOMO_EMAIL_SENDER
         ]);
 
-        $data = [];
-
+        $messageIds = [];
         /** @var \Google_Service_Gmail_Message $message */
         foreach ($messages as $message) {
-            $data[$message->getId()] = $this->indexMessage($message->getId());
+            $messageIds[] = $message->getId();
         }
+        $this->cache->preload($messageIds);
 
-        $files = glob($this->storageDir . '/' . self::FILE_GROUP_DIR . '/*/*/*' . self::CACHE_FILE_EXT);
-        foreach ($files as $path) {
-            $messageId = pathinfo($path, PATHINFO_FILENAME);
-            if (array_key_exists($messageId, $data)) {
-                continue;
-            }
-
-            $contents = file_get_contents($path);
-            list(, $encoded) = explode(',', $contents, 2);
-            $data[$messageId] = json_decode($encoded, true);
+        $data = [];
+        /** @var \Google_Service_Gmail_Message $message */
+        foreach ($messages as $message) {
+            $data[$message->getId()] = $this->fetchMessage($message->getId());
         }
 
         return $data;
@@ -206,47 +204,23 @@ class Payment
      * @param string $messageId
      * @return array|null
      */
-    protected function indexMessage($messageId)
+    protected function fetchMessage($messageId)
     {
-        $path = $this->getMessageFilePath($messageId);
+        $cache = $this->cache;
 
-        if (file_exists($path)) {
-            $contents = file_get_contents($path);
-            list(, $encoded) = explode(',', $contents, 2);
-
-            return json_decode($encoded, true);
-        }
-
-        $directory = dirname($path);
-        if (!is_dir($directory)) {
-            mkdir($directory, 0755, true);
+        if ($cache->has($messageId)) {
+            return $cache->get($messageId);
         }
 
         $message = $this->reader->getMessage($messageId);
         $transaction = $this->parseMessage($message);
 
-        $contents = time() . ',' . strval(json_encode($transaction));
-        file_put_contents($path, $contents);
+        $cache->save($messageId, [
+            'data' => $transaction,
+            'time' => \time()
+        ]);
 
         return $transaction;
-    }
-
-    /**
-     * @param string $messageId
-     * @return string
-     */
-    protected function getMessageFilePath($messageId)
-    {
-        $hashed = md5($messageId);
-        $index = 0;
-        $path = rtrim($this->storageDir, '/') . '/' . self::FILE_GROUP_DIR;
-
-        while ($index < 2) {
-            $path .= '/' . substr($hashed, $index * 2, 2);
-            $index++;
-        }
-
-        return $path . '/' . $messageId . self::CACHE_FILE_EXT;
     }
 
     /**
@@ -264,9 +238,9 @@ class Payment
             }
         }
 
-        foreach (array_keys($transaction) as $key) {
+        foreach (\array_keys($transaction) as $key) {
             if ($key === 'amount') {
-                $transaction[$key] = intval($transaction[$key]);
+                $transaction[$key] = \intval($transaction[$key]);
             } elseif ($key === 'date') {
                 $transaction[$key] = \DateTime::createFromFormat(
                     'd/m/Y H:i',
