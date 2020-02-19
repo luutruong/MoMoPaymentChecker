@@ -176,7 +176,8 @@ class Payment
         }
 
         $messages = $this->reader->listMessages([
-            'maxResults' => 100
+            'maxResults' => 100,
+            'q' => 'from:' . self::MOMO_EMAIL_SENDER
         ]);
 
         $data = [];
