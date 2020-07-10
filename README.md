@@ -8,7 +8,7 @@ Add this line to your `composer.json`
 
 {
   "require": {
-    "luutruong/momopaymentchecker": "^1.0.0"
+    "luutruong/momopaymentchecker": "1.0.6"
   }
 }
 
