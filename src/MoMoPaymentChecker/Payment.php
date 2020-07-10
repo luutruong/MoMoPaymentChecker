@@ -74,6 +74,22 @@ class Payment
      */
     public function parseMessage(\Google_Service_Gmail_Message $message)
     {
+        $isReportEmail = false;
+        /** @var \Google_Service_Gmail_MessagePartHeader $header */
+        foreach ($message->getPayload()->getHeaders() as $header) {
+            if ($header->getName() === 'Sender'
+                && strtolower($header->getValue()) === self::MOMO_EMAIL_SENDER
+            ) {
+                $isReportEmail = true;
+
+                break;
+            }
+        }
+
+        if (!$isReportEmail) {
+            return null;
+        }
+
         if (static::$messageParser !== null
             && \is_callable(static::$messageParser)
         ) {
@@ -108,23 +124,37 @@ class Payment
      */
     protected function indexRecentMessages()
     {
-        $messages = $this->reader->listMessages([
-            'maxResults' => 100,
-            'q' => 'from:' . self::MOMO_EMAIL_SENDER
-        ]);
-
-        $messageIds = [];
-        /** @var \Google_Service_Gmail_Message $message */
-        foreach ($messages as $message) {
-            $messageIds[] = $message->getId();
-        }
-        $this->cache->preload($messageIds);
-
         $data = [];
-        /** @var \Google_Service_Gmail_Message $message */
-        foreach ($messages as $message) {
-            $data[$message->getId()] = $this->fetchMessage($message->getId());
-        }
+        $limitPages = 5;
+        $pageToken = null;
+
+        do {
+            $limitPages--;
+
+            $params = [
+//                'q' => 'from:' . self::MOMO_EMAIL_SENDER,
+            ];
+            if ($pageToken) {
+                $params['pageToken'] = $pageToken;
+            }
+            $response = $this->reader->listMessages($params);
+
+            if ($response->getMessages()) {
+                $messageIds = [];
+                /** @var \Google_Service_Gmail_Message $message */
+                foreach ($response->getMessages() as $message) {
+                    $messageIds[] = $message->getId();
+                }
+                $this->cache->preload($messageIds);
+
+                /** @var \Google_Service_Gmail_Message $message */
+                foreach ($response->getMessages() as $message) {
+                    $data[$message->getId()] = $this->fetchMessage($message->getId());
+                }
+
+                $pageToken = $response->getNextPageToken();
+            }
+        } while ($pageToken && $limitPages > 0);
 
         return $data;
     }
