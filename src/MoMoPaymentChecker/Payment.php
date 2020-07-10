@@ -2,10 +2,6 @@
 
 namespace MoMoPaymentChecker;
 
-use MoMoPaymentChecker\Cache\AbstractFactory;
-use MoMoPaymentChecker\Cache\File;
-use Symfony\Component\DomCrawler\Crawler;
-
 class Payment
 {
     const MOMO_EMAIL_SENDER = 'no-reply@momo.vn';
@@ -21,38 +17,24 @@ class Payment
     protected $reader;
 
     /**
-     * @var AbstractFactory|null
+     * @var CacheInterface|null
      */
     protected $cache;
 
-    public function __construct(EmailReader $reader, AbstractFactory $cache = null)
+    public function __construct(EmailReader $reader, CacheInterface $cache)
     {
         $this->reader = $reader;
-        $this->cache = $cache ?: new File();
+        $this->cache = $cache;
     }
 
     /**
-     * @param string $storageDir
-     * @return $this
-     */
-    public function setStorageDir($storageDir)
-    {
-        if ($this->cache instanceof File) {
-            $this->cache->setStorageDir($storageDir);
-        } else {
-            throw new \LogicException('Set storage directory does not supported!');
-        }
-
-        return $this;
-    }
-
-    /**
+     * @param array $params
      * @param \Closure $filter
      * @return array|null
      */
-    public function getTransaction(\Closure $filter)
+    public function getTransaction(array $params, \Closure $filter)
     {
-        $data = $this->indexRecentMessages();
+        $data = $this->indexRecentMessages($params);
 
         foreach ($data as $item) {
             if (empty($item)) {
@@ -120,20 +102,23 @@ class Payment
     }
 
     /**
+     * @param array $params
      * @return array
      */
-    protected function indexRecentMessages()
+    protected function indexRecentMessages(array $params)
     {
+        if (isset($params['maxPages'])) {
+            $limitPages = $params['maxPages'];
+            unset($params['maxPages']);
+        } else {
+            $limitPages = 2;
+        }
+
         $data = [];
-        $limitPages = 5;
         $pageToken = null;
 
         do {
             $limitPages--;
-
-            $params = [
-//                'q' => 'from:' . self::MOMO_EMAIL_SENDER,
-            ];
             if ($pageToken) {
                 $params['pageToken'] = $pageToken;
             }

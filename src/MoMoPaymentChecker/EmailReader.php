@@ -33,6 +33,26 @@ class EmailReader
     }
 
     /**
+     * @param string $threadId
+     * @return \Google_Service_Gmail_Thread
+     */
+    public function getThread($threadId)
+    {
+        return $this->gmail->users_threads->get('me', $threadId, [
+            'format' => 'full'
+        ]);
+    }
+
+    /**
+     * @param array $params
+     * @return \Google_Service_Gmail_ListThreadsResponse
+     */
+    public function listThreads(array $params = [])
+    {
+        return $this->gmail->users_threads->listUsersThreads('me', $params);
+    }
+
+    /**
      * @param array $params
      * @return \Google_Service_Gmail_ListMessagesResponse
      */
