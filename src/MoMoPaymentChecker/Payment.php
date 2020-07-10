@@ -10,6 +10,10 @@ class Payment
      * @var callable|null
      */
     public static $messageParser;
+    /**
+     * @var callable|null
+     */
+    public static $indexer;
 
     /**
      * @var EmailReader
@@ -17,7 +21,7 @@ class Payment
     protected $reader;
 
     /**
-     * @var CacheInterface|null
+     * @var CacheInterface
      */
     protected $cache;
 
@@ -28,13 +32,33 @@ class Payment
     }
 
     /**
+     * @return CacheInterface
+     */
+    public function getCache()
+    {
+        return $this->cache;
+    }
+
+    /**
+     * @return EmailReader
+     */
+    public function getReader()
+    {
+        return $this->reader;
+    }
+
+    /**
      * @param array $params
      * @param \Closure $filter
      * @return array|null
      */
     public function getTransaction(array $params, \Closure $filter)
     {
-        $data = $this->indexRecentMessages($params);
+        if (static::$indexer !== null) {
+            $data = call_user_func(static::$indexer, $this, $params);
+        } else {
+            $data = $this->defaultIndexer($params);
+        }
 
         foreach ($data as $item) {
             if (empty($item)) {
@@ -105,7 +129,7 @@ class Payment
      * @param array $params
      * @return array
      */
-    protected function indexRecentMessages(array $params)
+    protected function defaultIndexer(array $params)
     {
         if (isset($params['maxPages'])) {
             $limitPages = $params['maxPages'];
