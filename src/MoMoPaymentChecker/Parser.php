@@ -106,7 +106,7 @@ class Parser
 
     protected function getNote($message)
     {
-        if (\preg_match('/^lời chúc (.*)$/ui', $message, $matches) === 1) {
+        if (\preg_match('/^lời chúc(.*)$/ui', $message, $matches) === 1) {
             return \trim($matches[1]);
         }
 
@@ -124,7 +124,7 @@ class Parser
 
     protected function getSender($message)
     {
-        if (\preg_match('/^người gửi (.*)/ui', $message, $matches) === 1) {
+        if (\preg_match('/^người gửi(.*)/ui', $message, $matches) === 1) {
             return \trim($matches[1]);
         }
 
