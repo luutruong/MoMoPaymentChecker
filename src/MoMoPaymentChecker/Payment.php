@@ -172,7 +172,7 @@ class Payment
      * @param string $messageId
      * @return array|null
      */
-    protected function fetchMessage($messageId)
+    public function fetchMessage($messageId)
     {
         $cache = $this->cache;
 
