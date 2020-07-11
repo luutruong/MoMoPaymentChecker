@@ -28,22 +28,61 @@ class Parser
 
     public function parse()
     {
+        $start = microtime(true);
+
         $tableRows = $this->crawler->filter('tr');
+        $total = $tableRows->count();
 
         $data = [];
-        for ($index = 0; $index < $tableRows->count(); $index++) {
-            $value = $this->matching($tableRows->eq($index));
-            if ($value !== null) {
-                $data = \array_merge($data, $value);
+        for ($index = ($total - 13); $index >= 0; $index--) {
+            $node = $tableRows->eq($index);
+            $table = $node->filter('table');
+            if (!$table->count()) {
+                continue;
+            }
+
+            $subRows = $table->filter('tr');
+            for ($j = 0; $j < $subRows->count(); $j++) {
+                $value = $this->matching($subRows->eq($j));
+                if ($value !== null) {
+                    $data = \array_merge($data, $value);
+                }
+            }
+
+            if ($this->isValid($data)) {
+                break;
             }
         }
 
+        $data['_timing'] = number_format(microtime(true) - $start, 4);
+
         return $data;
+    }
+
+    protected function isValid(array $data)
+    {
+        $required = [
+            'sender',
+            'phoneNumber',
+            'transactionDate',
+            'note',
+            'transactionId',
+            'amount'
+        ];
+
+        foreach ($required as $key) {
+            if (empty($data[$key])) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     protected function matching(Crawler $node)
     {
         $text = \trim($node->text());
+        $text = \str_replace("\n", '', $text);
         if (\strlen($text) === 0) {
             return null;
         }
@@ -76,7 +115,7 @@ class Parser
 
     protected function getSenderPhoneNumber($message)
     {
-        if (\preg_match('/^số điện thoại người gửi ([0-9]{10,13})$/ui', $message, $matches) === 1) {
+        if (\preg_match('/^số điện thoại người gửi\s*([0-9]{10,13})$/ui', $message, $matches) === 1) {
             return $matches[1];
         }
 
@@ -95,7 +134,7 @@ class Parser
     protected function getTransactionDate($message)
     {
         if (\preg_match(
-            '/^thời gian ([0-9]{1,2}\/[0-9]{1,2}\/[0-9]{4}\s*\-\s*[0-9]{1,2}:[0-9]{1,2})$/ui',
+            '/^thời gian\s*([0-9]{1,2}\/[0-9]{1,2}\/[0-9]{4}\s*\-\s*[0-9]{1,2}:[0-9]{1,2})$/ui',
             $message
             , $matches) === 1
         ) {
@@ -114,7 +153,7 @@ class Parser
 
     protected function getTransactionID($message)
     {
-        if (\preg_match('/^mã giao dịch ([0-9]+)$/ui', $message, $matches) === 1) {
+        if (\preg_match('/^mã giao dịch\s*([0-9]+)$/ui', $message, $matches) === 1) {
             return $matches[1];
         }
 
@@ -123,8 +162,8 @@ class Parser
 
     protected function getReceivedAmount($message)
     {
-        if (\preg_match('/^số tiền nhận được ([0-9\.\,]+)/ui', $message, $matches) === 1) {
-            $amount = $matches[1];
+        if (\preg_match('/^(số tiền nhận được|số tiền)\s*([0-9\.\,]+)/ui', $message, $matches)) {
+            $amount = $matches[2];
             $amount = \str_replace('.', '', $amount);
 
             return \intval($amount);
